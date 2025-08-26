@@ -18,6 +18,7 @@ The `TextToSpeech` class wraps the [Coqui TTS library](https://github.com/coqui-
 - **GPU Acceleration**: Automatic GPU detection and utilization when available
 
 ## 🚀 Quick Start
+See the complete interactive examples in the **[SYNTHETIC_DATA_GENERATION_AUDIO.ipynb](../SYNTHETIC_DATA_GENERATION_AUDIO.ipynb)** notebook
 
 ### Basic Text-to-Speech
 ```python
@@ -253,50 +254,6 @@ These models convert written text into natural-sounding speech audio. They vary 
 | `voice_conversion_models/multilingual/multi-dataset/openvoice_v1` | Multilingual | OpenVoice v1 | High |
 | `voice_conversion_models/multilingual/multi-dataset/openvoice_v2` | Multilingual | OpenVoice v2 | High |
 </details>
-
-## 💡 Usage Examples
-
-See the complete interactive examples in the **[SYNTHETIC_DATA_GENERATION_AUDIO.ipynb](../SYNTHETIC_DATA_GENERATION_AUDIO.ipynb)** notebook, which demonstrates:
-
-### 1. Simple Text-to-Speech
-```python
-tts_simple = TextToSpeech(model="tts_models/en/ljspeech/tacotron2-DDC")
-audio = tts_simple.text_to_speech("Welcome to our platform!")
-```
-
-### 2. Call Center Dialogue Simulation
-```python
-call_center_dialogue = {
-    "segments": [
-        {
-            "text": "Thank you for calling TechCorp. This is Sarah speaking.",
-            "speaker": "Representative"
-        },
-        {
-            "text": "Hi Sarah, I'm having trouble with my order.",
-            "speaker": "Customer"
-        }
-    ]
-}
-
-# Generate with random speaker assignment
-audio = tts_dialogue.create_dialogue(
-    call_center_dialogue, 
-    language="en",
-    random_speaker=True
-)
-```
-
-### 3. Snowflake Integration
-```python
-# Generate and save directly to Snowflake stage
-audio = tts.text_to_speech(
-    text="This will be saved to Snowflake",
-    speaker="Sofia Hellen",
-    language="en",
-    stage_location="@AUDIO/generated_file.wav"
-)
-```
 
 ## 🔧 Advanced Features
 
