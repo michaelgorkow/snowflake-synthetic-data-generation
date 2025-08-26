@@ -70,5 +70,5 @@ CREATE OR REPLACE NOTEBOOK food_beverage_call_center_recordings
         EXTERNAL_ACCESS_INTEGRATIONS = ('ai_external_access_integration')
         COMPUTE_POOL = 'SYSTEM_COMPUTE_POOL_GPU'
         RUNTIME_NAME = 'SYSTEM$GPU_RUNTIME'
-        MAIN_FILE = 'src/misc/food_beverage_call_center_recordings.ipynb';
+        MAIN_FILE = 'src/misc/food_beverage/call_center_recordings.ipynb';
 ALTER NOTEBOOK food_beverage_call_center_recordings ADD LIVE VERSION FROM LAST;
