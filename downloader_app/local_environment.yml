@@ -1,0 +1,11 @@
+name: snowflake-synthetic-data-generation
+channels:
+  - snowflake
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+    - python-dotenv==1.1.0
+    - snowflake==1.7.0
+    - snowflake-snowpark-python==1.35.0
+    - streamlit

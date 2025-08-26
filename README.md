@@ -29,6 +29,28 @@ Demonstrates advanced text-to-speech capabilities for creating realistic audio c
 ### 🎬 Video Generation  
 *Coming Soon* - Synthetic video content creation tools
 
+### 📱 Streamlit Apps
+
+**Application:** `downloader_app/download_files.py`
+
+Interactive web interface for managing and downloading files from Snowflake stages:
+
+- **Stage Browser** - View all available stages in your Snowflake environment
+- **File Explorer** - Browse files within each stage with detailed metadata (size, last modified)
+- **Bulk Download** - Select multiple files and download them to your local machine
+- **Connection Management** - Secure connection to Snowflake using environment variables
+- **Progress Tracking** - Real-time download progress with success/failure notifications
+- **Flexible Storage** - Specify custom local download directories
+
+**Use Cases:** Downloading generated synthetic audio files, exporting processed datasets, retrieving model outputs, file management workflows
+
+**Quick Start:**
+```bash
+cd downloader_app
+pip install -r requirements.txt
+streamlit run download_files.py
+```
+
 ## ⚡ Quick Setup
 
 Run the following SQL commands in your Snowflake worksheet to set up the environment:
