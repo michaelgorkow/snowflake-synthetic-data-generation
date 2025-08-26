@@ -258,6 +258,7 @@ The system includes predefined voice configurations in `voices.py`. For the `tts
 - `voice_conversion_models/multilingual/multi-dataset/knnvc`
 - `voice_conversion_models/multilingual/multi-dataset/openvoice_v1`
 - `voice_conversion_models/multilingual/multi-dataset/openvoice_v2`
+</details>
 
 ## 💡 Usage Examples
 
