@@ -286,20 +286,6 @@ audio/
 └── Readme.md          # This documentation
 ```
 
-## 🛠️ Dependencies
-
-- `torch` - PyTorch for model execution
-- `TTS` - Coqui TTS library
-- `soundfile` - Audio file I/O
-- `numpy` - Numerical operations
-- `snowflake-snowpark-python` - Snowflake integration
-
-## 📝 Requirements
-
-- Python 3.8+
-- Active Snowflake session (for stage operations)
-- GPU recommended for optimal performance
-
 ## 🎯 Use Cases
 
 - **Customer Service Training**: Generate realistic call center scenarios
