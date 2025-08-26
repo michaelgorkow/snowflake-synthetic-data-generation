@@ -1,0 +1,350 @@
+import os
+import io
+import torch
+import numpy as np
+from TTS.api import TTS
+import soundfile as sf
+from snowflake.snowpark.context import get_active_session
+import logging
+import random
+from voices import VOICES
+
+class TextToSpeech():
+    """
+    A text-to-speech class that wraps the Coqui TTS library and provides
+    integration with Snowflake Snowpark for saving audio files to stages.
+    """
+    
+    def __init__(self, model):
+        """
+        Initialize the TextToSpeech model.
+        
+        Args:
+            model (str): The TTS model identifier to load
+        """
+        if not model or not isinstance(model, str):
+            raise ValueError("Model parameter must be a non-empty string")
+            
+        # Agree to Coqui TOS to avoid interactive prompts
+        os.environ["COQUI_TOS_AGREED"] = "1"
+        
+        # Use GPU if available, otherwise fall back to CPU
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        
+        try:
+            # Load the TTS model and move to appropriate device
+            self.tts_model = TTS(model, progress_bar=True).to(device)
+        except Exception as e:
+            raise RuntimeError(f"Failed to load TTS model '{model}'. Please verify the model name is correct. Error: {str(e)}")
+        
+        # Store the sample rate for audio file operations
+        try:
+            self.sample_rate = self.tts_model.synthesizer.output_sample_rate
+        except AttributeError:
+            raise RuntimeError(f"Loaded model '{model}' does not have a valid synthesizer with sample rate information")
+        
+        # Check if model supports multiple languages and inform user
+        if self.tts_model.languages is not None:
+            logging.info('Model supports multiple languages:')
+            logging.info([lang for lang in self.tts_model.languages])
+            logging.info('Make sure to provide language argument when calling text_to_speech():')
+        
+        # Check if model supports multiple speakers and inform user
+        if self.tts_model.speakers is not None:
+            logging.info('Model supports multiple speakers:')
+            logging.info([lang for lang in self.tts_model.speakers])
+            logging.info('Make sure to provide speaker argument when calling text_to_speech():')
+
+    def check_session(self):
+        """
+        Verify that an active Snowpark session exists.
+        
+        Returns:
+            snowflake.snowpark.Session: The active Snowpark session
+            
+        Raises:
+            RuntimeError: If no active Snowpark session is found
+        """
+        try:
+            session = get_active_session()
+            return session
+        except Exception as e:
+            raise RuntimeError(f"No active Snowpark session found. Please establish a connection to Snowflake before using stage operations. Error: {str(e)}")
+
+    def text_to_speech(self, text, speaker=None, language=None, stage_location=None):
+        """
+        Convert text to speech audio.
+        
+        Args:
+            text (str): The text to convert to speech
+            speaker (str, optional): Speaker voice to use (if model supports multiple speakers)
+            language (str, optional): Language to use (if model supports multiple languages)
+            stage_location (str, optional): Snowflake stage location to save the audio file
+            
+        Returns:
+            numpy.ndarray: Audio data as a numpy array
+        """
+        if not text or not isinstance(text, str):
+            raise ValueError("Text parameter must be a non-empty string")
+            
+        if text.strip() == "":
+            raise ValueError("Text parameter cannot be empty or contain only whitespace")
+        
+        # Validate speaker parameter if provided
+        if speaker is not None:
+            if not isinstance(speaker, str):
+                raise ValueError("Speaker parameter must be a string")
+            if self.tts_model.speakers is None:
+                raise ValueError(f"Speaker '{speaker}' was provided but this model does not support multiple speakers")
+            if speaker not in self.tts_model.speakers:
+                available_speakers = ', '.join(self.tts_model.speakers[:5])  # Show first 5 speakers
+                total_speakers = len(self.tts_model.speakers)
+                raise ValueError(f"Speaker '{speaker}' is not available for this model. Available speakers include: {available_speakers}{'...' if total_speakers > 5 else ''} (total: {total_speakers})")
+        
+        # Validate language parameter if provided
+        if language is not None:
+            if not isinstance(language, str):
+                raise ValueError("Language parameter must be a string")
+            if self.tts_model.languages is None:
+                raise ValueError(f"Language '{language}' was provided but this model does not support multiple languages")
+            if language not in self.tts_model.languages:
+                available_languages = ', '.join(self.tts_model.languages)
+                raise ValueError(f"Language '{language}' is not supported by this model. Available languages: {available_languages}")
+        
+        # Check for active session if we need to save to stage
+        if stage_location is not None:
+            if not isinstance(stage_location, str) or stage_location.strip() == "":
+                raise ValueError("Stage location must be a non-empty string")
+            session = self.check_session()
+            
+        try:
+            # Generate speech based on available parameters
+            if language is not None and speaker is not None:
+                wav_data = self.tts_model.tts(text=text, speaker=speaker, language=language)
+            elif language is not None and speaker is None:
+                wav_data = self.tts_model.tts(text=text, language=language)
+            elif language is None and speaker is not None:
+                wav_data = self.tts_model.tts(text=text, speaker=speaker)
+            else:
+                wav_data = self.tts_model.tts(text=text)
+        except Exception as e:
+            raise RuntimeError(f"Text-to-speech generation failed. Text: '{text[:50]}...', Speaker: {speaker}, Language: {language}. Error: {str(e)}")
+        
+        # Convert to float32 numpy array for consistent audio processing
+        wav_data = np.asarray(wav_data, dtype=np.float32)
+        
+        # Save to Snowflake stage if location is provided
+        if stage_location is not None:
+            try:
+                self.save_to_stage(session, stage_location, wav_data)
+            except Exception as e:
+                raise RuntimeError(f"Failed to save audio to stage location '{stage_location}'. Error: {str(e)}")
+        return wav_data
+
+    def create_dialogue(self, dialogue: dict, language=None, stage_location=None, random_speaker=False):
+        """
+        Create a dialogue audio from multiple text segments with different speakers.
+        
+        Args:
+            dialogue (dict): Dictionary containing 'segments' key with list of 
+                           {'text': str, 'speaker': str} dictionaries
+            language (str, optional): Language to use for all segments
+            stage_location (str, optional): Snowflake stage location to save the audio file
+            random_speaker (bool, optional): Whether to randomly assign voices to speakers
+            
+        Returns:
+            numpy.ndarray: Combined audio data as a numpy array
+            
+        Raises:
+            ValueError: If dialogue format is invalid, model doesn't support required features
+            RuntimeError: If audio generation or stage operations fail
+        """
+        if not isinstance(dialogue, dict):
+            raise ValueError("Dialogue parameter must be a dictionary")
+
+        # Check for active session if we need to save to stage
+        if stage_location is not None:
+            if not isinstance(stage_location, str) or stage_location.strip() == "":
+                raise ValueError("Stage location must be a non-empty string")
+            session = self.check_session()
+                
+        # Verify model supports multiple speakers
+        if self.tts_model.speakers is None:
+            raise ValueError(f"This model ('{self.tts_model.model_name}') does not support multiple speakers. Please use a multi-speaker model for dialogue generation.")
+
+        # Verify language is provided for multilingual models
+        if self.tts_model.languages is not None and language is None:
+            available_languages = ', '.join(self.tts_model.languages)
+            raise ValueError(f"This model supports multiple languages ({available_languages}) but no language was specified. Please provide a language parameter.")
+            
+        # Validate language parameter if provided
+        if language is not None:
+            if not isinstance(language, str):
+                raise ValueError("Language parameter must be a string")
+            if self.tts_model.languages is not None and language not in self.tts_model.languages:
+                available_languages = ', '.join(self.tts_model.languages)
+                raise ValueError(f"Language '{language}' is not supported by this model. Available languages: {available_languages}")
+            
+        # Extract segments from dialogue dictionary
+        segments = dialogue.get('segments', None)
+        if segments is None:
+            raise ValueError("Dialogue dictionary must contain a 'segments' key")
+        
+        if not isinstance(segments, list):
+            raise ValueError("The 'segments' value must be a list")
+            
+        if len(segments) == 0:
+            raise ValueError("Dialogue segments list cannot be empty")
+
+        # Validate each segment
+        for i, segment in enumerate(segments):
+            if not isinstance(segment, dict):
+                raise ValueError(f"Segment {i+1} must be a dictionary with 'text' and 'speaker' keys")
+            
+            if 'text' not in segment:
+                raise ValueError(f"Segment {i+1} is missing required 'text' key")
+            
+            if 'speaker' not in segment:
+                raise ValueError(f"Segment {i+1} is missing required 'speaker' key")
+            
+            if not isinstance(segment['text'], str) or segment['text'].strip() == "":
+                raise ValueError(f"Segment {i+1}: 'text' must be a non-empty string")
+            
+            if not isinstance(segment['speaker'], str) or segment['speaker'].strip() == "":
+                raise ValueError(f"Segment {i+1}: 'speaker' must be a non-empty string")
+
+        if random_speaker:
+            # Check if the model supports random voice selection
+            if self.tts_model.model_name not in VOICES:
+                available_models = ', '.join(VOICES.keys())
+                raise ValueError(f"Model '{self.tts_model.model_name}' is not found in the VOICES dictionary. Random speaker selection is only available for: {available_models}")
+            
+        # Initialize empty audio array for concatenation
+        dialogue_audio = np.array([])
+        
+        # Process each segment and concatenate audio
+        speaker_mapping = {}  # Map original speakers to random voices
+        last_gender = None  # Track the gender of the last assigned voice
+        
+        for i, segment in enumerate(segments):
+            speaker = segment['speaker']
+            text = segment['text']
+            
+            # Handle random speaker assignment
+            if random_speaker:
+                if speaker not in speaker_mapping:
+                    # Get available voices for this model
+                    model_voices = VOICES[self.tts_model.model_name]
+                    
+                    # Determine which gender to use (alternate from last)
+                    if last_gender == 'female':
+                        available_voices = model_voices['male_voices']
+                        current_gender = 'male'
+                    elif last_gender == 'male':
+                        available_voices = model_voices['female_voices']
+                        current_gender = 'female'
+                    else:
+                        # First assignment - start with female
+                        available_voices = model_voices['female_voices']
+                        current_gender = 'female'
+                    
+                    if not available_voices:
+                        raise RuntimeError(f"No {current_gender} voices available for model '{self.tts_model.model_name}'")
+                    
+                    # Assign a random voice from the selected gender
+                    speaker_mapping[speaker] = random.choice(available_voices)
+                    last_gender = current_gender
+                actual_speaker = speaker_mapping[speaker]
+            else:
+                actual_speaker = speaker
+                # Validate that the speaker exists for non-random assignment
+                if actual_speaker not in self.tts_model.speakers:
+                    available_speakers = ', '.join(self.tts_model.speakers[:5])
+                    total_speakers = len(self.tts_model.speakers)
+                    raise ValueError(f"Segment {i+1}: Speaker '{actual_speaker}' is not available for this model. Available speakers include: {available_speakers}{'...' if total_speakers > 5 else ''} (total: {total_speakers})")
+            
+            try:
+                if language is None:
+                    segment_audio = self.text_to_speech(text, speaker=actual_speaker)
+                else:
+                    segment_audio = self.text_to_speech(text, speaker=actual_speaker, language=language)
+                dialogue_audio = np.concatenate([dialogue_audio, segment_audio])
+            except Exception as e:
+                raise RuntimeError(f"Failed to generate audio for segment {i+1} (speaker: {actual_speaker}, text: '{text[:30]}...'). Error: {str(e)}")
+
+        # Save to Snowflake stage if location is provided
+        if stage_location is not None:
+            try:
+                self.save_to_stage(session, stage_location, dialogue_audio)
+            except Exception as e:
+                raise RuntimeError(f"Failed to save dialogue audio to stage location '{stage_location}'. Error: {str(e)}")
+        return dialogue_audio
+
+    def save_to_stage(self, session, stage_location, audio_bytes):
+        """
+        Save audio data to a Snowflake stage as a WAV file.
+        
+        Args:
+            session: Active Snowpark session
+            stage_location (str): Target stage location path
+            audio_bytes (numpy.ndarray): Audio data to save
+            
+        Raises:
+            ValueError: If parameters are invalid
+            RuntimeError: If file operations fail
+        """
+        if not isinstance(stage_location, str) or stage_location.strip() == "":
+            raise ValueError("Stage location must be a non-empty string")
+            
+        if not isinstance(audio_bytes, np.ndarray):
+            raise ValueError("Audio data must be a numpy array")
+            
+        if audio_bytes.size == 0:
+            raise ValueError("Audio data cannot be empty")
+        
+        try:
+            # Create in-memory buffer for audio file
+            buffer = io.BytesIO()
+            
+            # Write audio data to buffer in WAV format
+            sf.write(buffer, audio_bytes, self.sample_rate, format='WAV')
+            
+            # Upload buffer contents to Snowflake stage
+            session.file.put_stream(input_stream=buffer, stage_location=stage_location, auto_compress=False)
+        except Exception as e:
+            raise RuntimeError(f"Failed to save audio file to stage. Stage location: '{stage_location}', Audio shape: {audio_bytes.shape}, Sample rate: {self.sample_rate}. Error: {str(e)}")
+
+
+# Usage Examples:
+
+# 1. Single-speaker English model for fast synthesis
+# tts_fast = TextToSpeech(model="tts_models/en/ljspeech/tacotron2-DDC")
+# audio = tts_fast.text_to_speech("Hello, this is a test of text to speech.")
+
+# 2. Multi-speaker, multilingual model for dialogue generation
+# tts_dialogue = TextToSpeech(model="tts_models/multilingual/multi-dataset/xtts_v2")
+# 
+# # Generate single speech with specific speaker and language
+# audio = tts_dialogue.text_to_speech(
+#     text="Hello, how are you today?", 
+#     speaker="Claribel Dervla", 
+#     language="en"
+# )
+#
+# # Create a dialogue between multiple speakers
+# dialogue_script = {
+#     "segments": [
+#         {"text": "Hello, how are you today?", "speaker": "Claribel Dervla"},
+#         {"text": "I'm doing great, thank you for asking!", "speaker": "Daisy Studious"},
+#         {"text": "That's wonderful to hear.", "speaker": "Claribel Dervla"}
+#     ]
+# }
+# dialogue_audio = tts_dialogue.create_dialogue(dialogue_script, language="en")
+#
+# # Save audio directly to Snowflake stage
+# audio_with_stage = tts_dialogue.text_to_speech(
+#     text="This will be saved to Snowflake stage", 
+#     speaker="Claribel Dervla", 
+#     language="en",
+#     stage_location="@my_stage/audio_file.wav"
+# )
