@@ -9,6 +9,7 @@ The `TextToSpeech` class wraps the [Coqui TTS library](https://github.com/coqui-
 ## ✨ Key Features
 
 - **Single & Multi-Speaker Support**: Generate speech with one or multiple distinct voices
+- **Voice Conversion**: Transform existing audio to match different speaker characteristics
 - **Multilingual Capabilities**: Support for multiple languages depending on the model
 - **Snowflake Integration**: Direct saving to Snowflake stages via Snowpark
 - **Random Speaker Assignment**: Automatic voice assignment with gender alternation
@@ -95,6 +96,25 @@ dialogue_audio = tts_dialogue.create_dialogue(
     language="en",
     stage_location="@CUSTOMER_CALLS/support_call_001.wav"
 )
+```
+
+### Voice Conversion Between Speakers
+```python
+from TTS.api import TTS
+
+# Load voice conversion model for transforming speaker characteristics
+print("🔄 Loading voice conversion model...")
+tts_model = TTS(model_name="voice_conversion_models/multilingual/vctk/freevc24", progress_bar=False)
+
+# Convert voice from source audio to target speaker's voice
+# This preserves the speech content but changes the voice characteristics
+converted_voice = tts_model.voice_conversion(
+    source_wav='audio/sample_files/harvard.wav',     # Source audio file
+    target_wav='audio/sample_files/obama_sample1.wav' # Target speaker reference
+)
+
+# The result maintains the original speech content but with the target speaker's voice
+print("🎭 Voice conversion complete - original content with new speaker characteristics!")
 ```
 
 
