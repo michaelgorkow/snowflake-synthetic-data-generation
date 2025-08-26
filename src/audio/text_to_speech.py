@@ -7,7 +7,7 @@ import soundfile as sf
 from snowflake.snowpark.context import get_active_session
 import logging
 import random
-from voices import VOICES
+from .voices import VOICES
 
 class TextToSpeech():
     """
