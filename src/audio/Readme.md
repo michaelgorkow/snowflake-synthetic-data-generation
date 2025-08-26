@@ -18,119 +18,85 @@ The `TextToSpeech` class wraps the [Coqui TTS library](https://github.com/coqui-
 
 ## 🚀 Quick Start
 
+### Basic Text-to-Speech
 ```python
 from audio.text_to_speech import TextToSpeech
 
 # Simple single-speaker TTS
 tts = TextToSpeech(model="tts_models/en/ljspeech/tacotron2-DDC")
 audio = tts.text_to_speech("Hello, this is a test of text to speech.")
+```
 
-# Multi-speaker dialogue
+### Multi-Speaker Dialogue
+```python
+# Multi-speaker dialogue with specific voices
 tts_dialogue = TextToSpeech(model="tts_models/multilingual/multi-dataset/xtts_v2")
 dialogue = {
     "segments": [
-        {"text": "Hello, how are you?", "speaker": "Claribel Dervla"},
-        {"text": "I'm doing great!", "speaker": "Andrew Chipper"}
+        {"text": "Hello, how are you today?", "speaker": "Claribel Dervla"},
+        {"text": "I'm doing great, thanks for asking!", "speaker": "Andrew Chipper"},
+        {"text": "That's wonderful to hear!", "speaker": "Claribel Dervla"}
     ]
 }
 audio = tts_dialogue.create_dialogue(dialogue, language="en")
 ```
 
-## 📋 Class Methods
-
-### `__init__(model: str)`
-
-Initialize the TextToSpeech model.
-
-**Parameters:**
-- `model` (str): The TTS model identifier to load (e.g., "tts_models/en/ljspeech/tacotron2-DDC")
-
-**Features:**
-- Automatic GPU/CPU detection
-- Model validation and loading
-- Sample rate configuration
-- Multi-language and multi-speaker capability detection
-
-### `text_to_speech(text, speaker=None, language=None, stage_location=None)`
-
-Convert text to speech audio.
-
-**Parameters:**
-- `text` (str): The text to convert to speech
-- `speaker` (str, optional): Speaker voice to use (if model supports multiple speakers)
-- `language` (str, optional): Language to use (if model supports multiple languages)  
-- `stage_location` (str, optional): Snowflake stage location to save the audio file
-
-**Returns:**
-- `numpy.ndarray`: Audio data as a numpy array
-
-**Example:**
+### Random Speaker Assignment
 ```python
-# Simple usage
-audio = tts.text_to_speech("Hello world!")
-
-# With specific speaker and language
-audio = tts.text_to_speech(
-    text="Bonjour le monde!", 
-    speaker="Claribel Dervla", 
-    language="fr"
-)
-
-# Save directly to Snowflake stage
-audio = tts.text_to_speech(
-    text="Hello world!", 
-    stage_location="@my_stage/audio.wav"
-)
-```
-
-### `create_dialogue(dialogue, language=None, stage_location=None, random_speaker=False)`
-
-Create a dialogue audio from multiple text segments with different speakers.
-
-**Parameters:**
-- `dialogue` (dict): Dictionary containing 'segments' key with list of {'text': str, 'speaker': str} dictionaries
-- `language` (str, optional): Language to use for all segments
-- `stage_location` (str, optional): Snowflake stage location to save the audio file
-- `random_speaker` (bool, optional): Whether to randomly assign voices to speakers
-
-**Returns:**
-- `numpy.ndarray`: Combined audio data as a numpy array
-
-**Example:**
-```python
-# Manual speaker assignment
-dialogue_script = {
+# Let the system automatically assign voices
+customer_service_call = {
     "segments": [
-        {"text": "Thank you for calling support.", "speaker": "Claribel Dervla"},
-        {"text": "Hi, I need help with my order.", "speaker": "Andrew Chipper"},
-        {"text": "I'd be happy to help you.", "speaker": "Claribel Dervla"}
+        {"text": "Thank you for calling TechSupport. How can I help you?", "speaker": "Agent"},
+        {"text": "Hi, I'm having issues with my internet connection.", "speaker": "Customer"},
+        {"text": "I'd be happy to help you troubleshoot that.", "speaker": "Agent"},
+        {"text": "Great! The connection keeps dropping every few minutes.", "speaker": "Customer"}
     ]
 }
-audio = tts.create_dialogue(dialogue_script, language="en")
-
-# Random speaker assignment (alternates gender automatically)
-audio = tts.create_dialogue(
-    dialogue_script, 
+audio = tts_dialogue.create_dialogue(
+    customer_service_call, 
     language="en", 
     random_speaker=True
 )
 ```
 
-### `save_to_stage(session, stage_location, audio_bytes)`
+### Multilingual Support
+```python
+# Generate speech in different languages
+tts_multi = TextToSpeech(model="tts_models/multilingual/multi-dataset/xtts_v2")
 
-Save audio data to a Snowflake stage as a WAV file.
+# French
+audio_fr = tts_multi.text_to_speech(
+    text="Bonjour, comment allez-vous?", 
+    speaker="Claribel Dervla", 
+    language="fr"
+)
 
-**Parameters:**
-- `session`: Active Snowpark session
-- `stage_location` (str): Target stage location path
-- `audio_bytes` (numpy.ndarray): Audio data to save
+# Spanish
+audio_es = tts_multi.text_to_speech(
+    text="Hola, ¿cómo estás?", 
+    speaker="Andrew Chipper", 
+    language="es"
+)
+```
 
-### `check_session()`
+### Direct Snowflake Integration
+```python
+# Generate and save directly to Snowflake stage
+audio = tts.text_to_speech(
+    text="This audio will be saved to Snowflake stage",
+    speaker="Sofia Hellen",
+    language="en",
+    stage_location="@AUDIO_STAGE/meeting_recording.wav"
+)
 
-Verify that an active Snowpark session exists.
+# Save dialogue to stage
+dialogue_audio = tts_dialogue.create_dialogue(
+    dialogue,
+    language="en",
+    stage_location="@CUSTOMER_CALLS/support_call_001.wav"
+)
+```
 
-**Returns:**
-- `snowflake.snowpark.Session`: The active Snowpark session
 
 ## 🎭 Available Voices
 
@@ -153,7 +119,7 @@ The system includes predefined voice configurations in `voices.py`. For the `tts
 ### Full list of Models
 
 <details>
-<summary>Click to expand the complete list of available TTS models</summary>
+<summary>Click to expand the complete list of available models</summary>
 
 #### Text-to-Speech Models
 These models convert written text into natural-sounding speech audio. They vary in quality, language support, and computational requirements. Single-speaker models generate consistent voice output, while multi-speaker models allow voice selection for different characters or scenarios.
